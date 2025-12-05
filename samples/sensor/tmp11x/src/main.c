@@ -12,15 +12,16 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/__assert.h>
 
-#define TMP11X_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(ti_tmp11x)
-#define TMP11X_EEPROM_NODE DT_CHILD(TMP11X_NODE, ti_tmp11x_eeprom_0)
+//#define TMP11X_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(ti_tmp11x)
+#define TMP11X_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(ti_tmp11x_rs)
+//#define TMP11X_EEPROM_NODE DT_CHILD(TMP11X_NODE, ti_tmp11x_eeprom_0)
 
-static uint8_t eeprom_content[EEPROM_TMP11X_SIZE];
+//static uint8_t eeprom_content[EEPROM_TMP11X_SIZE];
 
 int main(void)
 {
 	const struct device *const dev = DEVICE_DT_GET(TMP11X_NODE);
-	const struct device *const eeprom = DEVICE_DT_GET(TMP11X_EEPROM_NODE);
+	//const struct device *const eeprom = DEVICE_DT_GET(TMP11X_EEPROM_NODE);
 	struct sensor_value temp_value;
 
 	/* offset to be added to the temperature
@@ -34,16 +35,16 @@ int main(void)
 
 	printk("Device %s - %p is ready\n", dev->name, dev);
 
-	ret = eeprom_read(eeprom, 0, eeprom_content, sizeof(eeprom_content));
-	if (ret == 0) {
-		printk("eeprom content %02x%02x%02x%02x%02x%02x%02x%02x\n",
-		       eeprom_content[0], eeprom_content[1],
-		       eeprom_content[2], eeprom_content[3],
-		       eeprom_content[4], eeprom_content[5],
-		       eeprom_content[6], eeprom_content[7]);
-	} else {
-		printk("Failed to get eeprom content\n");
-	}
+	// ret = eeprom_read(eeprom, 0, eeprom_content, sizeof(eeprom_content));
+	// if (ret == 0) {
+	// 	printk("eeprom content %02x%02x%02x%02x%02x%02x%02x%02x\n",
+	// 	       eeprom_content[0], eeprom_content[1],
+	// 	       eeprom_content[2], eeprom_content[3],
+	// 	       eeprom_content[4], eeprom_content[5],
+	// 	       eeprom_content[6], eeprom_content[7]);
+	// } else {
+	// 	printk("Failed to get eeprom content\n");
+	// }
 
 	/*
 	 * if an offset of 2.5 oC is to be added,
@@ -53,7 +54,7 @@ int main(void)
 	offset_value.val1 = 0;
 	offset_value.val2 = 0;
 	ret = sensor_attr_set(dev, SENSOR_CHAN_AMBIENT_TEMP,
-			      SENSOR_ATTR_OFFSET, &offset_value);
+                          SENSOR_ATTR_OFFSET, &offset_value);
 	if (ret) {
 		printk("sensor_attr_set failed ret = %d\n", ret);
 		printk("SENSOR_ATTR_OFFSET is only supported by TMP117 and TMP119\n");
@@ -62,14 +63,16 @@ int main(void)
 		ret = sensor_sample_fetch(dev);
 		if (ret) {
 			printk("Failed to fetch measurements (%d)\n", ret);
-			return 0;
+			k_sleep(K_MSEC(1000));
+			continue;
 		}
 
 		ret = sensor_channel_get(dev, SENSOR_CHAN_AMBIENT_TEMP,
 					 &temp_value);
 		if (ret) {
 			printk("Failed to get measurements (%d)\n", ret);
-			return 0;
+			k_sleep(K_MSEC(1000));
+			continue;
 		}
 
 		printk("temp is %d.%d oC\n", temp_value.val1, temp_value.val2);

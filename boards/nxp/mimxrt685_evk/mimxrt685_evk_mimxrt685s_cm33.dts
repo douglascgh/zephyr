@@ -23,7 +23,7 @@
 		led0 = &green_led;
 		led1 = &blue_led;
 		led2 = &red_led;
-		temperature-sensor = &ti_tmp11x;
+		temperature-sensor = &ti_tmp11x_rs;
 		usart-0 = &flexcomm0;
 		/* For pwm test suites */
 		pwm-0 = &sc_timer;
@@ -177,8 +177,8 @@ arduino_i2c: &flexcomm2 {
 		reset-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
 	};
 
-	ti_tmp11x: ti_tmp11x@48 {
-		compatible = "ti,tmp11x";
+	ti_tmp11x_rs: ti_tmp11x_rs@48 {
+		compatible = "ti,tmp11x_rs";
 		reg = <0x48>;
 		#address-cells = <1>;
 		#size-cells = <0>;

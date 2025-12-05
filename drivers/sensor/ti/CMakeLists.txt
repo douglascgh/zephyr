@@ -21,5 +21,6 @@ add_subdirectory_ifdef(CONFIG_TMP108 tmp108)
 add_subdirectory_ifdef(CONFIG_TMP112 tmp112)
 add_subdirectory_ifdef(CONFIG_TMP114 tmp114)
 add_subdirectory_ifdef(CONFIG_TMP11X tmp11x)
+add_subdirectory_ifdef(CONFIG_TMP11X_RS tmp11x_rs)
 add_subdirectory_ifdef(CONFIG_TMP435 tmp435)
 # zephyr-keep-sorted-stop
