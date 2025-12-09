@@ -788,7 +788,7 @@ include(misc/generated/CMakeLists.txt)
 add_subdirectory(soc)
 add_subdirectory(boards)
 add_subdirectory(subsys)
-add_subdirectory(drivers)
+# Add drivers later sub directory after header path are populated.
 
 # Include zephyr modules generated CMake file.
 foreach(module_name ${ZEPHYR_MODULE_NAMES})
@@ -1015,6 +1015,9 @@ gen_kobject_list_headers(
   INCLUDES ${struct_tags_json}
   DEPENDS ${struct_tags_json}
   )
+
+# We add driver sub directory after generating headers include path for rust based driver.
+add_subdirectory(drivers)
 
 # Generate sections for kernel device subsystems
 set(

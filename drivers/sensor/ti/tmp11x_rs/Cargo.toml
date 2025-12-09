@@ -11,7 +11,8 @@ embedded-sensors-hal = "0.1.0"
 log = "0.4.22"
 spin = "0.10.0"
 # TODO add zephyr dependencies after fixing build dependencies
-# zephyr = { path = "../../../../../modules/lang/rust/zephyr" }
+zephyr = { path = "../../../../../modules/lang/rust/zephyr" }
+zephyr-macros = { path = "../../../../../modules/lang/rust/zephyr-macros" }
 
 [build-dependencies]
 zephyr-build = { path = "../../../../../modules/lang/rust/zephyr-build" }
