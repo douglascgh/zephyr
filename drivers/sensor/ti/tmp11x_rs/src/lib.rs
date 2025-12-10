@@ -1,44 +1,119 @@
 #![no_std]
 #![no_main]
 
-use core::ffi::c_int;
-use core::panic::PanicInfo;
+//! TMP11x Temperature Sensor Driver
+//!
+//! This driver provides support for Texas Instruments TMP11x series
+//! temperature sensors using Zephyr's generic sensor framework in Rust.
+
+use core::ffi::c_void;
 use log::info;
 
 use embedded_sensors_hal::sensor;
 use embedded_sensors_hal::temperature::{DegreesCelsius, TemperatureSensor};
+use zephyr::sensor::{SensorError, SensorResult};
 
-// Keep this in sync with the C side. Avoid pulling Zephyr headers.
-#[repr(C)]
-pub struct Tmp11xRsCtx {
-    i2c: *const core::ffi::c_void, // Opaque pointer to Zephyr I2C device
-    i2c_addr: u16,
+/// TMP11x driver state
+///
+/// This structure holds the runtime state for a TMP11x sensor instance.
+/// All sensor logic is implemented in safe Rust.
+///
+pub struct Tmp11xDriver {
+    /// Last sampled temperature
+    sample: i32,
+    /// Device ID
+    id: u16,
 }
 
-// If you need logging from Rust, either FFI to printk or buffer and return errors.
-// Minimal example:
-
-#[unsafe(no_mangle)]
-pub extern "C" fn tmp11x_rs_init(ctx: *mut Tmp11xRsCtx) -> c_int {
-    if ctx.is_null() {
-        return -22; // -EINVAL
+impl Default for Tmp11xDriver {
+    fn default() -> Self {
+        Self::new()
     }
-    // Perform any internal init. In a real driver, you might probe the sensor ID.
-    0
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn tmp11x_rs_sample_fetch(_ctx: *mut Tmp11xRsCtx) -> c_int {
-    // For a real device, perform I2C read(s) here.
-    // This skeleton keeps I2C on the C side for simplicity; or you can FFI back to C helpers.
-    0
+// Generate FFI exports using the sensor framework macro
+// This creates:
+// - tmp11x_rs_driver_api (sensor_driver_api vtable)
+// - tmp11x_rs_init (init function)
+// - Internal FFI wrappers for all sensor operations
+zephyr::sensor_ffi_exports!(
+    driver: Tmp11xDriver,
+    prefix: tmp11x_rs
+);
+
+impl Tmp11xDriver {
+    /// Create a new TMP11x driver instance
+    ///
+    /// This must be const to allow static initialization.
+    pub const fn new() -> Self {
+        Self {
+            sample: 2000, // Default to 20.00°C
+            id: 0,
+        }
+    }
 }
 
-// Zephyr sensor_value { int32_t val1; int32_t val2; }
-#[repr(C)]
-pub struct SensorValue {
-    val1: i32,
-    val2: i32,
+impl SensorDriver for Tmp11xDriver {
+    fn init(&mut self, _dev: *const zephyr::raw::device, device_ready: bool) -> SensorResult<()> {
+        if !device_ready {
+            return Err(SensorError::NotReady);
+        }
+
+        // In a real implementation, we would:
+        // 1. Read and verify the device ID from register
+        // 2. Configure the sensor (conversion rate, alert settings, etc.)
+        // 3. Perform any necessary calibration
+
+        // For now, just set a random device ID
+        self.id = 0x1234;
+
+        Ok(())
+    }
+
+    fn sample_fetch(&mut self, dev: *const zephyr::raw::device, channel: SensorChannel) -> SensorResult<()> {
+        match channel {
+            SensorChannel::All | SensorChannel::AmbientTemp => {
+                // In a real implementation, we would:
+                // 1. Read the temperature register via I2C
+                // 2. Convert the raw value to temperature
+                // 3. Store in self.sample
+
+                let mut sensor = match TempSensorTmp11x::try_new(dev as *const c_void) {
+                    Ok(sensor) => sensor,
+                    Err(_) => {
+                        info!("Error creating TempSensorTmp11x");
+                        return Err(SensorError::InvalidArgument); // -EINVAL
+                    }
+                };
+
+                self.sample = match sensor.temperature() {
+                    Ok(temperature) => temperature as i32,
+                    Err(e) => {
+                        info!("Error reading temperature {:?}", e);
+                        return Err(SensorError::IoError); // -EIO
+                    }
+                };
+
+                Ok(())
+            }
+            _ => Err(SensorError::InvalidChannel),
+        }
+    }
+
+    fn channel_get(&self, channel: SensorChannel) -> SensorResult<SensorValue> {
+        match channel {
+            SensorChannel::AmbientTemp | SensorChannel::All => {
+                // Convert stored sample to SensorValue
+                // sample is in units of 0.01°C, convert to millicelsius
+                let temp_c = self.sample * 10;
+                Ok(SensorValue::from_millicelsius(temp_c))
+            }
+            _ => Err(SensorError::InvalidChannel),
+        }
+    }
+
+    // attr_set and attr_get use default implementations (NotSupported)
+    // Override these if you need to support sensor attributes
 }
 
 unsafe extern "C" {
@@ -49,96 +124,31 @@ unsafe extern "C" {
     ) -> core::ffi::c_int;
 }
 
-/// Rust
-/// Read a register from TMP11x via I2C.
+/// Read a register from TMP11x via I2C using C implementation.
+///
+/// This is a thin wrapper while a Rust-based I2C implementation is developed.
 /// # Safety
 /// - `ptr` must be a valid pointer to the Zephyr I2C device context expected by the C side.
-pub unsafe fn tmp11x_reg_read(ptr: *const core::ffi::c_void, reg: u8) -> Result<u16, i32> {
-    let mut raw: u16 = 0;
+pub unsafe fn tmp11x_reg_read(ptr: *const core::ffi::c_void, reg: u8) -> SensorResult<u16> {
+    let mut raw: u16 = 1;
 
     if ptr.is_null() {
-        return Err(-22); // -EINVAL
+        return Err(SensorError::InvalidArgument); // -EINVAL
     }
 
     // SAFETY: ptr is checked for null above
     let rc = unsafe { tmp11x_reg_read_wrapper(ptr, reg, &mut raw) };
     if rc < 0 {
-        return Err(-5); // -EIO
+        return Err(SensorError::IoError); // -EIO
     }
 
     Ok(raw)
 }
 
-/// Rust
-/// Get the channel value for TMP11x and write into `out`.
+/// Embedded HAL Temperature Sensor for TMP11x
 ///
-/// # Safety
-/// - `out` must be a valid, non-null, writable pointer to a `SensorValue`.
-/// - The memory at `out` must be properly aligned for `SensorValue`.
-/// - `ptr` must be a valid pointer to the Zephyr I2C device context expected by the C side.
-/// - Caller must ensure concurrent access does not race with other writers to `out`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tmp11x_rs_channel_get(
-    ptr: *const core::ffi::c_void,
-    _chan: i32,
-    out: *mut SensorValue,
-) -> c_int {
-    if ptr.is_null() {
-        return -22; // -EINVAL
-    }
-
-    if out.is_null() {
-        return -22; // -EINVAL
-    }
-
-    unsafe {
-        (*out).val1 = 1;
-    }
-
-    unsafe {
-        (*out).val2 = 2;
-    }
-
-    let mut sensor = match TempSensorTmp11x::try_new(ptr) {
-        Ok(sensor) => sensor,
-        Err(_) => {
-            info!("Error creating TempSensorTmp11x");
-            return -22; // -EINVAL
-        }
-    };
-
-    let current_temperature = match sensor.temperature() {
-        Ok(temperature) => temperature,
-        Err(e) => {
-            info!("Error reading temperature: {:?}", e);
-            return -5; // -EIO
-        }
-    };
-
-    let current_temperature = current_temperature as i32;
-    let whole = current_temperature / 100;
-    let fractional = current_temperature - (whole * 100);
-
-    // SAFETY: out is not null checked above
-    unsafe {
-        (*out).val1 = whole as i32;
-    }
-
-    // SAFETY: out is not null checked above
-    unsafe {
-        (*out).val2 = fractional as i32;
-    }
-
-    0
-}
-
-// TODO: Remove custom panic handler by adding zephyr crate.
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    info!("panic: {}", info);
-    loop {}
-}
-
+/// This struct provides a safe Rust embedded TemperatureSensor interface
+/// to the TMP11x temperature sensor.
 pub struct TempSensorTmp11x {
     ptr: *const core::ffi::c_void,
 }
